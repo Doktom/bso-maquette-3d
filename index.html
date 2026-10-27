@@ -126,6 +126,20 @@
     #plan .bar b{font-size:13px;flex:1 1 100%}
     #pstage{margin:0 8px 8px}
   }
+  .views{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+  .vcard{position:relative;aspect-ratio:4/3;border-radius:9px;overflow:hidden;border:1px solid var(--line);cursor:pointer;background:rgba(127,140,155,.18);padding:0;font-size:11px;color:#fff;display:block;min-width:0}
+  .vcard img{width:100%;height:100%;object-fit:cover;display:block}
+  .vcard span{position:absolute;left:0;right:0;bottom:0;padding:10px 5px 3px;background:linear-gradient(transparent,rgba(0,0,0,.7));text-align:left;font-weight:600}
+  .vcard:hover{border-color:var(--acc)}
+  #gal{position:fixed;inset:0;z-index:60;background:rgba(10,14,20,.82);backdrop-filter:blur(5px);display:none;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:16px}
+  #gal img{max-width:100%;max-height:calc(100dvh - 120px);border-radius:12px;box-shadow:0 16px 50px rgba(0,0,0,.5)}
+  #gal .cap{color:#fff;text-align:center}
+  #gal .cap b{display:block;font-size:15px}
+  #gal .cap span{opacity:.75;font-size:12.5px}
+  #gal .row2{display:flex;gap:8px}
+  #gal button{flex:none;font:inherit;color:#fff;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.3);border-radius:9px;padding:6px 14px;cursor:pointer}
+  #gal button:hover{background:rgba(255,255,255,.26)}
+  body.clean #ui,body.clean #card,body.clean .lbl,body.clean .street,body.clean #compass,body.clean #info,body.clean #tuto,body.clean #spot,body.clean #dim{display:none !important}
 </style>
 </head>
 <body>
@@ -154,6 +168,7 @@
     <div id="count"></div>
     <div id="hint" style="display:block">Cliquez sur un logement pour voir sa fiche et son plan de vente.</div>
   </div>
+  <div id="viewsbox"><h1>Points de vue</h1><div class="views" id="views"></div></div>
   <label class="chk"><input type="checkbox" id="shadow" checked> Ombres portées</label>
   <label class="chk"><input type="checkbox" id="edges" checked> Arêtes</label>
   <label class="chk"><input type="checkbox" id="veg" checked> Végétation</label>
@@ -164,6 +179,7 @@
 <svg id="compass" viewBox="-32 -32 64 64"><circle r="30" fill="rgba(20,24,29,.72)" stroke="rgba(255,255,255,.3)"/><g id="needle"><path d="M0-17 L5 0 L0-2 L-5 0Z" fill="#e5484d"/><path d="M0 17 L5 0 L0 2 L-5 0Z" fill="#cfd6de"/></g><text id="ntxt" x="0" y="-23" font-size="10" font-weight="700" fill="#fff" text-anchor="middle" dominant-baseline="central">N</text></svg>
 <div id="card"></div>
 <div id="plan"><div class="bar"><b id="planT"></b><span class="sp"></span><button id="pzin" title="Zoom +">+</button><button id="pzout" title="Zoom −">−</button><button id="pfit">Ajuster</button><a id="pdl" download>Télécharger le PDF</a><button id="pclose" title="Fermer (Échap)">✕</button></div><div id="pstage"><img id="pimg" alt="Plan de vente" draggable="false"></div></div>
+<div id="gal"><img id="galImg" alt=""><div class="cap"><b id="galT"></b><span id="galD"></span></div><div class="row2"><button id="galPrev">‹ Précédent</button><button id="galGo">Voir en 3D</button><button id="galNext">Suivant ›</button><button id="galX">Fermer</button></div></div>
 <div id="dim"></div><div id="spot"></div>
 <div id="tuto"><h3 id="tT"></h3><p id="tD"></p><div class="nav"><button class="skip" id="tSkip">Passer</button><span class="dots" id="tDots"></span><button id="tPrev">Précédent</button><button class="go" id="tNext">Suivant</button></div></div>
 <div id="load">Chargement…</div>
@@ -180,6 +196,7 @@ import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { Sky } from 'three/addons/objects/Sky.js';
 
 const $ = (id) => document.getElementById(id);
+if (new URLSearchParams(location.search).has('clean')) document.body.classList.add('clean');   // ?clean : vue sans interface (captures)
 const dark = matchMedia('(prefers-color-scheme:dark)').matches;
 const bg = new THREE.Color(dark ? 0x14181d : 0xdfe6ee);
 
@@ -609,7 +626,8 @@ const NORTH = new THREE.Vector3(Math.sin(northRot), 0, -Math.cos(northRot));
 const place = (el, p) => { v3.copy(p).project(camera); el.style.display = v3.z < 1 ? '' : 'none'; el.style.transform = `translate(${(v3.x * 0.5 + 0.5) * innerWidth}px,${(-v3.y * 0.5 + 0.5) * innerHeight}px) translate(-50%,-50%)`; };
 function updateOrient() {                            // boussole + noms de rues
   const on = $('streets').checked;
-  streetLabels.forEach((l) => { l.el.style.display = on ? '' : 'none'; if (on) place(l.el, l.pos); });
+  streetLabels.forEach((l) => { const far = pedMode && camera.position.distanceTo(l.pos) > 55;   // en vue piéton, seuls les noms de rues proches
+    l.el.style.display = on && !far ? '' : 'none'; if (on && !far) place(l.el, l.pos); });
   const a = ctr.clone().project(camera), b = ctr.clone().add(NORTH).project(camera);
   const ang = Math.atan2((b.x - a.x) * camera.aspect, b.y - a.y); // 0 = nord vers le haut de l'écran
   $('needle').setAttribute('transform', `rotate(${(ang * 180) / Math.PI})`);
@@ -673,7 +691,35 @@ $('date').onchange = () => { setupTod(); updateSun(); };
 $('shadow').onchange = (e) => { sun.castShadow = e.target.checked; for (const m of matCache.values()) m.needsUpdate = true; shadowDirty = true; };
 $('edges').onchange = (e) => edgeLines.forEach((l) => (l.material.visible = e.target.checked));
 
-const fly = (p) => { camera.position.copy(p); controls.target.copy(home.tgt); controls.update(); };
+const DEFAULT_POLAR = controls.maxPolarAngle;
+const fly = (p) => { tween = null; pedMode = false; camera.fov = 35; camera.updateProjectionMatrix(); controls.maxPolarAngle = DEFAULT_POLAR; camera.position.copy(p); controls.target.copy(home.tgt); controls.update(); };
+let tween = null, pedMode = false;
+function flyView(v) {
+  pedMode = true;                      // transition douce vers un point de vue piéton (œil à 1,65 m)
+  if (currentState !== 'all') document.querySelector('#state input[value=all]').click();
+  controls.maxPolarAngle = Math.PI * 0.72;  // l'œil est plus bas que la cible : on lève la limite haute de l'orbite
+  tween = { t0: performance.now(), dur: 1200, p0: camera.position.clone(), g0: controls.target.clone(), f0: camera.fov, p1: new THREE.Vector3(...v.pos), g1: new THREE.Vector3(...v.tgt), f1: v.fov };
+  dirty = 60;
+}
+window.bsoView = (pos, tgt, fov = 60) => flyView({ pos, tgt, fov });   // utilisé aussi pour préparer les visuels
+/* ---------- 3 points de vue piétons (œil à 1,65 m) + visuels réalistes ---------- */
+const VIEWS = [
+  { name: 'Angle des deux rues', d: 'Depuis le trottoir de la route de Bretagne, face à l\'angle du bâtiment.', pos: [6, 6.62, -48], tgt: [-4, 10, -20], fov: 56, img: 'vues/vue-1.jpg' },
+  { name: 'Façade et RDC ouvert', d: 'La façade sur rue, le mur de pierre conservé et le parking couvert sous pilotis.', pos: [36, 6.62, 20], tgt: [-3, 9.5, -8], fov: 58, img: 'vues/vue-2.jpg' },
+  { name: 'Jardin et arbres', d: 'Le cœur d\'îlot paysagé et la façade sur jardin, vus du sud.', pos: [-8, 6.62, 33], tgt: [2, 9.5, -8], fov: 50, img: 'vues/vue-3.jpg' },
+];
+let galI = 0;
+function openGal(i) {
+  galI = (i + VIEWS.length) % VIEWS.length; const v = VIEWS[galI];
+  $('galImg').src = v.img; $('galT').textContent = `${galI + 1}/${VIEWS.length} · ${v.name}`; $('galD').textContent = v.d; $('gal').style.display = 'flex';
+}
+$('views').innerHTML = VIEWS.map((v, i) => `<button class="vcard" data-i="${i}" title="${v.name}"><img src="${v.img}" alt="${v.name}" loading="lazy" onerror="this.remove()"><span>${i + 1}. ${v.name.split(' ')[0]}</span></button>`).join('');
+$('views').onclick = (e) => { const b = e.target.closest('.vcard'); if (b) openGal(+b.dataset.i); };
+$('galX').onclick = () => ($('gal').style.display = 'none');
+$('galPrev').onclick = () => openGal(galI - 1); $('galNext').onclick = () => openGal(galI + 1);
+$('galGo').onclick = () => { $('gal').style.display = 'none'; flyView(VIEWS[galI]); };
+$('gal').onclick = (e) => { if (e.target === $('gal')) $('gal').style.display = 'none'; };
+addEventListener('keydown', (e) => { if (e.key === 'Escape') $('gal').style.display = 'none'; });
 $('iso').onclick = () => fly(home.pos);
 $('top').onclick = () => fly(home.top);
 
@@ -688,6 +734,12 @@ new ResizeObserver(() => resize()).observe(document.documentElement);   // robus
 for (const t of ['input', 'change', 'click', 'pointermove', 'pointerup', 'wheel', 'keydown']) addEventListener(t, () => (dirty = Math.max(dirty, 3)), { passive: true });
 setInterval(() => (dirty = Math.max(dirty, 1)), 600);
 renderer.setAnimationLoop(() => {
+  if (tween) {
+    const k = Math.min(1, (performance.now() - tween.t0) / tween.dur), e = k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
+    camera.position.lerpVectors(tween.p0, tween.p1, e); controls.target.lerpVectors(tween.g0, tween.g1, e);
+    camera.fov = tween.f0 + (tween.f1 - tween.f0) * e; camera.updateProjectionMatrix(); dirty = 2;
+    if (k >= 1) tween = null;
+  }
   const moving = controls.update();
   if (!moving && dirty <= 0) return;
   dirty = Math.max(0, dirty - 1);

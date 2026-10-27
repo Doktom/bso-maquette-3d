@@ -683,6 +683,7 @@ function resize() {
   camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); dirty = 3;
 }
 addEventListener('resize', resize); resize();
+new ResizeObserver(() => resize()).observe(document.documentElement);   // robuste aux changements de fenêtre (rotation, barre d'adresse mobile)
 // tout événement utilisateur relance quelques images ; un battement lent couvre le reste (chargements asynchrones)
 for (const t of ['input', 'change', 'click', 'pointermove', 'pointerup', 'wheel', 'keydown']) addEventListener(t, () => (dirty = Math.max(dirty, 3)), { passive: true });
 setInterval(() => (dirty = Math.max(dirty, 1)), 600);
